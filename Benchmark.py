@@ -1,39 +1,108 @@
 #! /usr/bin/python3
+"""
+SPARQL Benchmark script written by Xavier Garnier
+"""
 
 import time
 import os
-import re
-import csv
+#import re
+#import csv
 import sys
+import getopt
 from SPARQLWrapper import SPARQLWrapper, JSON
 
-def launch_query(query, endpoint, method):
+def usage():
+    """
+    help function
+    """
+    print('Usage:')
+    print('\t./Benchmark.py -t <triplestore> -d <data dir1> -d <data dir2> -q <query_dir>')
+    print('\n<triplestore>: virtuoso and/or fuseki')
+    print('<data_dir>: contains data files in ttl format')
+    print('<query_dir>: contains query files in sparql format')
+
+def get_args(argv):
+    """
+    Get the arguments of the script
+
+    :argv: list of arguments
+    :return: a dict with the parsed arguments
+    :rtype: dict
+    """
+    data = []
+    triplestore = []
+    results = {}
+    query = ''
+    try:
+        opts, argvs = getopt.getopt(argv, "ht:d:q:", ["triplestore=", "data=", "query="])
+    except getopt.GetoptError:
+        usage()
+        sys.exit(2)
+    if not opts:
+        usage()
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            usage()
+            sys.exit(2)
+        elif opt in ("-t", "--triplestore"):
+            triplestore.append(arg)
+        elif opt in ("-d", "--data"):
+            data.append(arg)
+        elif opt in ("-q", "--query"):
+            query = arg
+
+    if not triplestore or not data or not query:
+        usage()
+        sys.exit(2)
+
+    for ts in triplestore:
+        if ts not in ('virtuoso', 'fuseki'):
+            print(ts+' is not supported (only fuseki and virtuoso)')
+            sys.exit(2)
+
+    if len(data) != 2:
+        print('This script work with 2 datasets')
+        sys.exit(2)
+
+    results['triplestore'] = triplestore
+    results['data'] = data
+    results['query'] = query
+    return results
+
+def launch_query(query, endpoint, method, virtuoso_hack):
     """
     launch a query in a endpoint
     :query: a string of the query
     :endpoint: the sparql endpoint
     :method: method: POST or GET
+    :virtuoso_hack: True or false, for virtuoso triplestore
     """
     sparql = SPARQLWrapper(endpoint)
     sparql.setCredentials('dba', 'dba')
     sparql.method = method
-    sparql.queryType = 'SELECT'
+    if virtuoso_hack:
+        sparql.queryType = 'SELECT'
     sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
     sparql.query().convert()
 
-def empty_database(endpoint, grph):
+def empty_database(endpoint, grph, virtuoso_hack):
     """
     delete all data of an endpoint
     :endpoint: the sparql endpoint
+    :graph: the graph to delete
+    :virtuoso_hack: True or false, for virtuoso triplestore
     """
-    launch_query('CLEAR GRAPH <'+grph+'>', endpoint, 'POST')
+    launch_query('CLEAR GRAPH <'+grph+'>', endpoint, 'POST', virtuoso_hack)
 
-def fill_database(path, endpoint, grph):
+def fill_database(path, endpoint, grph, virtuoso_hack):
     """
     load data into the endpoint
     :path: the datafile (turtle)
     :endpoint: the sparql endpoint
+    :graph: the graph to delete
+    :virtuoso_hack: True or false, for virtuoso triplestore
     """
     ttl = open(path, 'r') 
     ttl_string = ttl.readlines()
@@ -50,48 +119,36 @@ def fill_database(path, endpoint, grph):
         line = line.replace('\n', '')
         block += line+'\n'
         if line.endswith('.'):
-            #print(block)
-            #print('-------')
-            launch_query(prefix_string+' INSERT DATA { GRAPH <'+grph+'> {'+block+'} }', endpoint, 'POST')
+            launch_query(prefix_string+' INSERT DATA { GRAPH <'+grph+'> {'+block+'} }', endpoint, 'POST', virtuoso_hack)
             block = ''
 
-            
-
-
-
-
-        #launch_query(prefix_string+' INSERT DATA { GRAPH <'+grph+'> {'+line+'} }', endpoint, 'POST')
-
-    #launch_query(prefix_string+' INSERT DATA { GRAPH <'+grph+'> {'+new_ttl_string+'} }', endpoint, 'POST')
-
-
-def benchmark(query, endpoint, method):
+def benchmark(query, endpoint, method, virtuoso_hack):
     """
     benchmark query
-
+    :query: a string of the query
+    :endpoint: the sparql endpoint
+    :method: method: POST or GET
     :return: time of query (ms)
     :rtype: float
     """
     start = time.time()
-    launch_query(query, endpoint, method)
+    launch_query(query, endpoint, method, virtuoso_hack)
     end = time.time()
     diff = end - start
     return diff
 
+args = get_args(sys.argv[1:])
 
-data_dir = './data/'
-gene_dir = data_dir+'gene/'
-snp_dir = data_dir+'snp/'
-
-query_dir = './query/'
-
+data_dirs = args.get('data')
+triplestores = args.get('triplestore')
+query_dir = args.get('query')
 
 triple_stores = {
-    #'fuseki' : {
-    #    'query_endpoint' : 'http://localhost:3030/database/sparql',
-    #    'update_endpoint' : 'http://localhost:3030/database/update',
-    #    'graph' : 'default'
-    #},
+    'fuseki' : {
+        'query_endpoint' : 'http://localhost:3030/database/sparql',
+        'update_endpoint' : 'http://localhost:3030/database/update',
+        'graph' : 'benchmark'
+    },
     'virtuoso' : {
         'query_endpoint' : 'http://localhost:8890/sparql/',
         'update_endpoint' : 'http://localhost:8890/sparql/',
@@ -100,36 +157,40 @@ triple_stores = {
 }
 
 for triple_store, endpoints in triple_stores.items():
+    if triple_store not in triplestores:
+        continue
     print('=======> triplestore : '+triple_store)
     query_endpoint = endpoints['query_endpoint']
     update_endpoint = endpoints['update_endpoint']
     graph = endpoints['graph']
+    hack = False
+    if triple_store == 'virtuoso':
+        hack = True
 
-    for gene_file in os.listdir(gene_dir):
-        for snp_file in os.listdir(snp_dir):
-            #print(gene_file)
+    data_dir1 = data_dirs[0]
+    data_dir2 = data_dirs[1]
+
+    for data_file1 in os.listdir(data_dir1):
+        for data_file2 in os.listdir(data_dir2):
 
             # empty database
             print('--> empty database')
-            empty_database(update_endpoint, graph)
+            empty_database(update_endpoint, graph, hack)
             # refill
-            print('--> refill with '+gene_file+' and '+snp_file)
-            fill_database(gene_dir+gene_file, update_endpoint, graph)
-            fill_database(snp_dir+snp_file, update_endpoint, graph)
-
-            #sys.exit(0)
+            print('--> refill with '+data_file1+' and '+data_file2)
+            fill_database(data_dir1+'/'+data_file1, update_endpoint, graph, hack)
+            fill_database(data_dir2+'/'+data_file2, update_endpoint, graph, hack)
             
             # query
             for query_file in os.listdir(query_dir):
                 print('--> query : '+query_file)
 
-                fp = open(query_dir+query_file)
+                fp = open(query_dir+'/'+query_file)
                 query_str = fp.read()
-                msg = triple_store+'\t'+gene_file+'\t'+query_file
-                exec_time = benchmark(query_str, query_endpoint, 'GET')
+                exec_time = benchmark(query_str, query_endpoint, 'GET', hack)
                 print('---> query executed in '+str(exec_time)+' ms')
 
-                # write log file
+                #TODO write log file
 
 
 print('done !')
