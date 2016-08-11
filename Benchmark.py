@@ -34,8 +34,9 @@ def get_args(argv):
     triplestore = []
     results = {}
     query = ''
+    st_serv = False
     try:
-        opts, argvs = getopt.getopt(argv, "ht:d:q:", ["triplestore=", "data=", "query="])
+        opts, argvs = getopt.getopt(argv, "ht:d:q:", ["triplestore=", "data=", "query=", "restart-service"])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -52,6 +53,8 @@ def get_args(argv):
             data.append(arg)
         elif opt in ("-q", "--query"):
             query = arg
+        elif opt == '--restart-service':
+            st_serv = True
 
     if not triplestore or not data or not query:
         usage()
@@ -69,6 +72,7 @@ def get_args(argv):
     results['triplestore'] = triplestore
     results['data'] = data
     results['query'] = query
+    results['daemon'] = st_serv
     return results
 
 def get_config(ini):
@@ -89,7 +93,8 @@ def launch_query(query, endpoint, method, virtuoso_hack):
     :virtuoso_hack: True or false, for virtuoso triplestore
     """
     sparql = SPARQLWrapper(endpoint)
-    sparql.setCredentials('dba', 'dba')
+    if virtuoso_hack:
+        sparql.setCredentials('dba', 'dba')
     sparql.method = method
     if virtuoso_hack:
         sparql.queryType = 'SELECT'
@@ -132,6 +137,23 @@ def fill_database(path, endpoint, grph, virtuoso_hack):
             launch_query(prefix_string+' INSERT DATA { GRAPH <'+grph+'> {'+block+'} }', endpoint, 'POST', virtuoso_hack)
             block = ''
 
+def start_stop_triplestore(daemon, arg):
+    """
+    start/stop/restart the triplestores
+    :daemon: the deamon name of the triplestore
+    :arg: the commande to execute (start, stop, restart)
+    """
+
+    daemon_str = 'sudo service '+daemon+' '+arg
+    print('starting service: '+daemon_str)
+
+    try:
+        os.system(daemon_str)
+        time.sleep(10)
+    except Exception:
+        print('Impossible to '+arg+' '+daemon)
+        sys.exit(2)
+
 def benchmark(query, endpoint, method, virtuoso_hack):
     """
     benchmark query
@@ -160,10 +182,15 @@ def main():
     triplestores = args.get('triplestore')
     query_dir = args.get('query')
 
+    res_file = open('results.csv', 'w')
+    res_file.write('triplestore\tdata1\tdata2\tquery\ttime\n')
+
     for triple_store in conf.sections():
         if triple_store not in triplestores:
             continue
         print('=======> triplestore : '+triple_store)
+        if args['daemon']:
+            start_stop_triplestore(conf[triple_store]['daemon'], 'restart')
         query_endpoint = conf[triple_store]['query_endpoint']
         update_endpoint = conf[triple_store]['update_endpoint']
         graph = conf[triple_store]['graph']
@@ -189,17 +216,21 @@ def main():
                 for query_file in os.listdir(query_dir):
                     print('--> query : '+query_file)
 
+                    # Write results in a file
                     fp = open(query_dir+'/'+query_file)
                     query_str = fp.read()
                     exec_time = benchmark(query_str, query_endpoint, 'GET', hack)
                     print('---> query executed in '+str(exec_time)+' ms')
+                    res_file.write(triple_store+'\t'+data_file1+'\t'+data_file2+'\t'+query_file+'\t'+str(exec_time)+'\n')
 
-                    #TODO write log file
+
+        print('--> empty database')
+        empty_database(update_endpoint, graph, hack)
+        if args['daemon']:
+            start_stop_triplestore(conf[triple_store]['daemon'], 'stop')
 
 
-    print('--> empty database')
-    empty_database(update_endpoint, graph, hack)
-    print('done !')
+    print('done ! Results available in results.csv')
 
 if __name__ == "__main__":
     main()
