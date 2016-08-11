@@ -9,6 +9,7 @@ import os
 #import csv
 import sys
 import getopt
+import configparser
 from SPARQLWrapper import SPARQLWrapper, JSON
 
 def usage():
@@ -69,6 +70,15 @@ def get_args(argv):
     results['data'] = data
     results['query'] = query
     return results
+
+def get_config(ini):
+    """
+    Get the triplestore configurations stored in a INI file
+    :ini: path of the INI file
+    """
+    config = configparser.ConfigParser()
+    config.read(ini)
+    return config
 
 def launch_query(query, endpoint, method, virtuoso_hack):
     """
@@ -137,32 +147,23 @@ def benchmark(query, endpoint, method, virtuoso_hack):
     diff = end - start
     return diff
 
+### Begin script ###
+
+conf = get_config('triplestore.config.ini')
+
 args = get_args(sys.argv[1:])
 
 data_dirs = args.get('data')
 triplestores = args.get('triplestore')
 query_dir = args.get('query')
 
-triple_stores = {
-    'fuseki' : {
-        'query_endpoint' : 'http://localhost:3030/database/sparql',
-        'update_endpoint' : 'http://localhost:3030/database/update',
-        'graph' : 'benchmark'
-    },
-    'virtuoso' : {
-        'query_endpoint' : 'http://localhost:8890/sparql/',
-        'update_endpoint' : 'http://localhost:8890/sparql/',
-        'graph' : 'benchmark'
-    }
-}
-
-for triple_store, endpoints in triple_stores.items():
+for triple_store in conf.sections():
     if triple_store not in triplestores:
         continue
     print('=======> triplestore : '+triple_store)
-    query_endpoint = endpoints['query_endpoint']
-    update_endpoint = endpoints['update_endpoint']
-    graph = endpoints['graph']
+    query_endpoint = conf[triple_store]['query_endpoint']
+    update_endpoint = conf[triple_store]['update_endpoint']
+    graph = conf[triple_store]['graph']
     hack = False
     if triple_store == 'virtuoso':
         hack = True
@@ -193,6 +194,8 @@ for triple_store, endpoints in triple_stores.items():
                 #TODO write log file
 
 
+print('--> empty database')
+empty_database(update_endpoint, graph, hack)
 print('done !')
 
 
