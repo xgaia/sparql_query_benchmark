@@ -147,56 +147,55 @@ def benchmark(query, endpoint, method, virtuoso_hack):
     diff = end - start
     return diff
 
-### Begin script ###
+def main():
+    conf = get_config('triplestore.config.ini')
 
-conf = get_config('triplestore.config.ini')
+    args = get_args(sys.argv[1:])
 
-args = get_args(sys.argv[1:])
+    data_dirs = args.get('data')
+    triplestores = args.get('triplestore')
+    query_dir = args.get('query')
 
-data_dirs = args.get('data')
-triplestores = args.get('triplestore')
-query_dir = args.get('query')
+    for triple_store in conf.sections():
+        if triple_store not in triplestores:
+            continue
+        print('=======> triplestore : '+triple_store)
+        query_endpoint = conf[triple_store]['query_endpoint']
+        update_endpoint = conf[triple_store]['update_endpoint']
+        graph = conf[triple_store]['graph']
+        hack = False
+        if triple_store == 'virtuoso':
+            hack = True
 
-for triple_store in conf.sections():
-    if triple_store not in triplestores:
-        continue
-    print('=======> triplestore : '+triple_store)
-    query_endpoint = conf[triple_store]['query_endpoint']
-    update_endpoint = conf[triple_store]['update_endpoint']
-    graph = conf[triple_store]['graph']
-    hack = False
-    if triple_store == 'virtuoso':
-        hack = True
+        data_dir1 = data_dirs[0]
+        data_dir2 = data_dirs[1]
 
-    data_dir1 = data_dirs[0]
-    data_dir2 = data_dirs[1]
+        for data_file1 in os.listdir(data_dir1):
+            for data_file2 in os.listdir(data_dir2):
 
-    for data_file1 in os.listdir(data_dir1):
-        for data_file2 in os.listdir(data_dir2):
+                # empty database
+                print('--> empty database')
+                empty_database(update_endpoint, graph, hack)
+                # refill
+                print('--> refill with '+data_file1+' and '+data_file2)
+                fill_database(data_dir1+'/'+data_file1, update_endpoint, graph, hack)
+                fill_database(data_dir2+'/'+data_file2, update_endpoint, graph, hack)
 
-            # empty database
-            print('--> empty database')
-            empty_database(update_endpoint, graph, hack)
-            # refill
-            print('--> refill with '+data_file1+' and '+data_file2)
-            fill_database(data_dir1+'/'+data_file1, update_endpoint, graph, hack)
-            fill_database(data_dir2+'/'+data_file2, update_endpoint, graph, hack)
-            
-            # query
-            for query_file in os.listdir(query_dir):
-                print('--> query : '+query_file)
+                # query
+                for query_file in os.listdir(query_dir):
+                    print('--> query : '+query_file)
 
-                fp = open(query_dir+'/'+query_file)
-                query_str = fp.read()
-                exec_time = benchmark(query_str, query_endpoint, 'GET', hack)
-                print('---> query executed in '+str(exec_time)+' ms')
+                    fp = open(query_dir+'/'+query_file)
+                    query_str = fp.read()
+                    exec_time = benchmark(query_str, query_endpoint, 'GET', hack)
+                    print('---> query executed in '+str(exec_time)+' ms')
 
-                #TODO write log file
-
-
-print('--> empty database')
-empty_database(update_endpoint, graph, hack)
-print('done !')
+                    #TODO write log file
 
 
+    print('--> empty database')
+    empty_database(update_endpoint, graph, hack)
+    print('done !')
 
+if __name__ == "__main__":
+    main()
