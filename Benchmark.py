@@ -148,8 +148,12 @@ def benchmark(query, endpoint, method, virtuoso_hack):
     return diff
 
 def main():
-    conf = get_config('triplestore.config.ini')
+    """
+    Main function:
+    Fill the triplestore with the data and run the queries
+    """
 
+    conf = get_config('triplestore.config.ini')
     args = get_args(sys.argv[1:])
 
     data_dirs = args.get('data')
