@@ -25,7 +25,7 @@ The script take several arguments:
 + `-h`: diplay the help message
 + `-t`, `--triplestore`: the triplestore to test, work with fuseki and virtuoso
 + `-d`, `--data`: a data directory who contain .ttl files. You have to provide 2 directory
-+ `-q, `--query`: the query dir who contain the .sparql query files
++ `-q`, `--query`: the query dir who contain the .sparql query files
 + `-o`, `--output-file`: the name of the output file (optional, default: results.csv)
 + `--restart-service`: when the script change triplestore, stop it and start the other.
 
