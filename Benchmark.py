@@ -131,6 +131,7 @@ def fill_database(path, endpoint, grph, virtuoso_hack):
 
     prefix_string = ''
     block = ''
+    block_number = 0
     for line in ttl_string:
         if line.startswith('@'):
             if line.startswith('@base'):
@@ -141,8 +142,11 @@ def fill_database(path, endpoint, grph, virtuoso_hack):
         line = line.replace('\n', '')
         block += line+'\n'
         if line.endswith('.'):
-            launch_query(prefix_string+' INSERT DATA { GRAPH <'+grph+'> {'+block+'} }', endpoint, 'POST', virtuoso_hack)
-            block = ''
+            block_number += 1
+            if block_number == 200:
+                launch_query(prefix_string+' INSERT DATA { GRAPH <'+grph+'> {'+block+'} }', endpoint, 'POST', virtuoso_hack)
+                block = ''
+                block_number = 0
 
 def start_stop_triplestore(daemon, arg):
     """
