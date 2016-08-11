@@ -21,6 +21,9 @@ def usage():
     print('\n<triplestore>: virtuoso and/or fuseki')
     print('<data_dir>: contains data files in ttl format')
     print('<query_dir>: contains query files in sparql format')
+    print('\noptional args:')
+    print('\t-o, --output-file : name of the result files (default : results.csv)')
+    print('\t--restart-service : start and stop the triplestore at change')
 
 def get_args(argv):
     """
@@ -35,8 +38,9 @@ def get_args(argv):
     results = {}
     query = ''
     st_serv = False
+    output = 'results.csv'
     try:
-        opts, argvs = getopt.getopt(argv, "ht:d:q:", ["triplestore=", "data=", "query=", "restart-service"])
+        opts, argvs = getopt.getopt(argv, "ht:d:q:o:", ["triplestore=", "data=", "query=", "restart-service=", "output-file="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -55,6 +59,8 @@ def get_args(argv):
             query = arg
         elif opt == '--restart-service':
             st_serv = True
+        elif opt in ('-o', '--output-file'):
+            output = arg
 
     if not triplestore or not data or not query:
         usage()
@@ -73,6 +79,7 @@ def get_args(argv):
     results['data'] = data
     results['query'] = query
     results['daemon'] = st_serv
+    results['output'] = output
     return results
 
 def get_config(ini):
@@ -181,8 +188,9 @@ def main():
     data_dirs = args.get('data')
     triplestores = args.get('triplestore')
     query_dir = args.get('query')
+    output_file = args.get('output')
 
-    res_file = open('results.csv', 'w')
+    res_file = open(output_file, 'w')
     res_file.write('triplestore\tdata1\tdata2\tquery\ttime\n')
 
     for triple_store in conf.sections():
@@ -216,11 +224,11 @@ def main():
                 for query_file in os.listdir(query_dir):
                     print('--> query : '+query_file)
 
-                    # Write results in a file
                     fp = open(query_dir+'/'+query_file)
                     query_str = fp.read()
                     exec_time = benchmark(query_str, query_endpoint, 'GET', hack)
                     print('---> query executed in '+str(exec_time)+' ms')
+                    # Write results in a file
                     res_file.write(triple_store+'\t'+data_file1+'\t'+data_file2+'\t'+query_file+'\t'+str(exec_time)+'\n')
 
 
@@ -230,7 +238,7 @@ def main():
             start_stop_triplestore(conf[triple_store]['daemon'], 'stop')
 
 
-    print('done ! Results available in results.csv')
+    print('done ! Results available in '+output_file)
 
 if __name__ == "__main__":
     main()
